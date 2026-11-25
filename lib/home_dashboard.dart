@@ -37,10 +37,6 @@ class HomeDashboard extends StatelessWidget {
       listenable: WorkoutStore.instance,
       builder: (context, _) {
         final workouts = WorkoutStore.instance.workouts;
-        final weekAgo = DateTime.now().subtract(const Duration(days: 7));
-        final thisWeek = workouts.where((w) => w.date.isAfter(weekAgo)).toList();
-        final weekVolume = thisWeek.fold<double>(0, (sum, w) => sum + w.totalVolume);
-        final weekMinutes = thisWeek.fold<int>(0, (sum, w) => sum + w.duration.inMinutes);
         final recent = workouts.take(3).toList();
         final recovery = muscleRecovery(workouts);
         final focus = suggestedFocus(recovery);
@@ -154,36 +150,6 @@ class HomeDashboard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // Weekly stats.
-            Row(
-              children: [
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.local_fire_department,
-                    value: '${thisWeek.length}',
-                    label: 'Workouts\nthis week',
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.timer_outlined,
-                    value: '${weekMinutes}m',
-                    label: 'Training\ntime',
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _StatTile(
-                    icon: Icons.bolt,
-                    value: compactNumber(weekVolume),
-                    label: 'kg lifted\nthis week',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
             // Steps, calories and heart rate from Health Connect.
             const HealthPanel(),
             const SizedBox(height: 16),
@@ -267,46 +233,6 @@ class _RoundIconButton extends StatelessWidget {
           padding: const EdgeInsets.all(11),
           child: Icon(icon, color: AppColors.text, size: 22),
         ),
-      ),
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-
-  const _StatTile({required this.icon, required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          IconBadge(icon, size: 34),
-          const SizedBox(height: 12),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 11, height: 1.2)),
-        ],
       ),
     );
   }

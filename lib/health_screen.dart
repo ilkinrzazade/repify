@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'health_cards.dart';
 import 'health_service.dart';
 
 /// Health Connect settings: connect, refresh, demo data, privacy.
@@ -182,41 +183,170 @@ class _TodaySummary extends StatelessWidget {
 
   const _TodaySummary({required this.health, this.updated});
 
+  String _bpm(double? value) => value == null ? '–' : '${value.round()}';
+
   @override
   Widget build(BuildContext context) {
-    final rows = <(String, String)>[
-      ('Steps', '${health.steps}'),
-      ('Active calories', '${health.activeCalories.round()} kcal'),
-      ('Heart rate samples', '${health.heartRate.length}'),
-      if (health.latestBpm != null) ('Latest heart rate', '${health.latestBpm!.round()} bpm'),
-    ];
+    final time = updated == null
+        ? null
+        : '${updated!.hour}:${updated!.minute.toString().padLeft(2, '0')}';
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            updated == null
-                ? 'Today'
-                : 'Today · updated ${updated!.hour}:${updated!.minute.toString().padLeft(2, '0')}',
-            style: const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700),
+          Row(
+            children: [
+              const Icon(Icons.today, color: AppColors.lime, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Today',
+                  style: TextStyle(color: AppColors.text, fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (time != null) ...[
+                const Icon(Icons.sync, color: AppColors.muted, size: 14),
+                const SizedBox(width: 4),
+                Text('Updated $time', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+              ],
+            ],
           ),
-          const SizedBox(height: 8),
-          for (final (label, value) in rows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
+          const SizedBox(height: 14),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.45,
+            children: [
+              _MetricTile(
+                icon: Icons.directions_walk,
+                color: AppColors.lime,
+                value: '${health.steps}',
+                unit: 'steps',
+                label: 'Goal $stepGoal',
+                progress: ringProgress(health.steps, stepGoal),
+              ),
+              _MetricTile(
+                icon: Icons.local_fire_department,
+                color: calorieColor,
+                value: '${health.activeCalories.round()}',
+                unit: 'kcal',
+                label: 'Active calories',
+                progress: ringProgress(health.activeCalories, calorieGoal),
+              ),
+              _MetricTile(
+                icon: Icons.favorite,
+                color: heartColor,
+                value: _bpm(health.latestBpm),
+                unit: 'bpm',
+                label: 'Latest heart rate',
+              ),
+              _MetricTile(
+                icon: Icons.monitor_heart_outlined,
+                color: trainingColor,
+                value: _bpm(health.averageBpm),
+                unit: 'bpm',
+                label: '${health.heartRate.length} samples · avg',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String value;
+  final String unit;
+  final String label;
+  final double? progress;
+
+  const _MetricTile({
+    required this.icon,
+    required this.color,
+    required this.value,
+    required this.unit,
+    required this.label,
+    this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withAlpha(18),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withAlpha(70)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: color.withAlpha(40),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              const Spacer(),
+              if (progress != null)
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 3,
+                    color: color,
+                    backgroundColor: color.withAlpha(40),
+                  ),
+                ),
+            ],
+          ),
+          const Spacer(),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text.rich(
+              TextSpan(
                 children: [
-                  Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted))),
-                  Text(value, style: const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700)),
+                  TextSpan(
+                    text: value,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' $unit',
+                    style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
                 ],
               ),
             ),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppColors.muted, fontSize: 11),
+          ),
         ],
       ),
     );

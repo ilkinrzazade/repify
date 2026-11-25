@@ -157,34 +157,53 @@ class HealthService extends ChangeNotifier {
       value is NumericHealthValue ? value.numericValue.toDouble() : 0;
 
   /// Reads today's steps, heart rate and active calories.
+  /// Each value is read separately, so one problem does not hide the rest.
   Future<void> refresh() async {
     if (!isConnected || isLoading) return;
     isLoading = true;
     notifyListeners();
     final now = DateTime.now();
     final midnight = DateTime(now.year, now.month, now.day);
-    try {
-      final steps = await _health.getTotalStepsInInterval(midnight, now) ?? 0;
-      final points = _health.removeDuplicates(await _health.getHealthDataFromTypes(
-        types: const [HealthDataType.HEART_RATE, HealthDataType.ACTIVE_ENERGY_BURNED],
-        startTime: midnight,
-        endTime: now,
-      ));
-      final heart = points
-          .where((p) => p.type == HealthDataType.HEART_RATE)
-          .map((p) => HeartSample(p.dateFrom, _number(p.value)))
-          .where((h) => h.bpm > 0)
-          .toList()
-        ..sort((a, b) => a.time.compareTo(b.time));
-      final calories = points
-          .where((p) => p.type == HealthDataType.ACTIVE_ENERGY_BURNED)
-          .fold<double>(0, (s, p) => s + _number(p.value));
-      today = DailyHealth(steps: steps, activeCalories: calories, heartRate: heart);
-      lastUpdated = now;
-      error = null;
-    } catch (e) {
-      error = 'Could not read Health Connect data.';
+    final problems = <String>[];
+
+    Future<List<HealthDataPoint>> read(HealthDataType type) async {
+      try {
+        return _health.removeDuplicates(await _health.getHealthDataFromTypes(
+          types: [type],
+          startTime: midnight,
+          endTime: now,
+        ));
+      } catch (e) {
+        problems.add('${type.name}: $e');
+        return [];
+      }
     }
+
+    var steps = 0;
+    try {
+      steps = await _health.getTotalStepsInInterval(midnight, now) ?? 0;
+    } catch (e) {
+      problems.add('steps total: $e');
+    }
+    if (steps == 0) {
+      // Fallback: add up the single step records.
+      final stepPoints = await read(HealthDataType.STEPS);
+      steps = stepPoints.fold<double>(0, (s, p) => s + _number(p.value)).round();
+    }
+
+    final heart = (await read(HealthDataType.HEART_RATE))
+        .map((p) => HeartSample(p.dateFrom, _number(p.value)))
+        .where((h) => h.bpm > 0)
+        .toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
+    final calories = (await read(HealthDataType.ACTIVE_ENERGY_BURNED))
+        .fold<double>(0, (s, p) => s + _number(p.value));
+
+    today = DailyHealth(steps: steps, activeCalories: calories, heartRate: heart);
+    lastUpdated = now;
+    error = problems.isEmpty ? null : 'Could not read: ${problems.join(' | ')}';
+    debugPrint('Health Connect today: $steps steps, ${calories.round()} kcal, '
+        '${heart.length} heart samples. Problems: $problems');
     isLoading = false;
     notifyListeners();
   }
@@ -217,36 +236,56 @@ class HealthService extends ChangeNotifier {
   Future<bool> addDemoData() async {
     if (!isConnected) return false;
     final now = DateTime.now();
-    final start = now.subtract(const Duration(hours: 3));
-    try {
-      var ok = await _health.writeHealthData(
-        value: 5200,
-        type: HealthDataType.STEPS,
-        startTime: start,
-        endTime: start.add(const Duration(hours: 1)),
-      );
-      ok &= await _health.writeHealthData(
-        value: 320,
-        type: HealthDataType.ACTIVE_ENERGY_BURNED,
-        startTime: start,
-        endTime: start.add(const Duration(hours: 1)),
-      );
-      const bpm = [72, 78, 95, 118, 132, 142, 138, 126, 110, 96, 84, 76];
-      for (var i = 0; i < bpm.length; i++) {
-        final t = start.add(Duration(minutes: i * 12));
-        ok &= await _health.writeHealthData(
-          value: bpm[i].toDouble(),
-          type: HealthDataType.HEART_RATE,
-          startTime: t,
-          endTime: t.add(const Duration(minutes: 1)),
-        );
-      }
-      await refresh();
-      return ok;
-    } catch (e) {
-      error = 'Could not write demo data: $e';
+    final midnight = DateTime(now.year, now.month, now.day);
+    // The last 3 hours, but never before midnight: the rings show "today".
+    var start = now.subtract(const Duration(hours: 3));
+    if (start.isBefore(midnight)) start = midnight;
+    final span = now.subtract(const Duration(seconds: 5)).difference(start);
+    if (span.inSeconds < 30) {
+      error = 'A new day just started. Try again in a minute.';
       notifyListeners();
       return false;
     }
+    Duration part(double fraction) =>
+        Duration(milliseconds: (span.inMilliseconds * fraction).round());
+
+    final failed = <String>[];
+    Future<void> write(String label, double value, HealthDataType type, DateTime from, DateTime to) async {
+      try {
+        final ok = await _health.writeHealthData(
+          value: value,
+          type: type,
+          startTime: from,
+          endTime: to,
+        );
+        if (!ok) failed.add('$label (not saved)');
+      } catch (e) {
+        failed.add('$label: $e');
+      }
+    }
+
+    await write('steps', 5200, HealthDataType.STEPS, start, start.add(part(0.9)));
+    await write('calories', 320, HealthDataType.ACTIVE_ENERGY_BURNED, start, start.add(part(0.9)));
+    const bpm = [72, 78, 95, 118, 132, 142, 138, 126, 110, 96, 84, 76];
+    for (var i = 0; i < bpm.length; i++) {
+      final t = start.add(part(i / bpm.length));
+      await write('heart rate', bpm[i].toDouble(), HealthDataType.HEART_RATE, t,
+          t.add(part(0.5 / bpm.length)));
+    }
+    debugPrint('Health Connect demo data from $start to $now. Failed: $failed');
+
+    await refresh();
+    if (failed.isNotEmpty) {
+      error = 'Could not write: ${failed.toSet().join(' | ')}';
+      notifyListeners();
+      return false;
+    }
+    if (today.steps == 0 && !today.hasHeartRate) {
+      error = 'Data was written but could not be read back. '
+          'Open Settings → Health Connect → App permissions → Repify and check "Allow all".';
+      notifyListeners();
+      return false;
+    }
+    return true;
   }
 }
