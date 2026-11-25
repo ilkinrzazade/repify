@@ -1,8 +1,38 @@
 import 'package:flutter/material.dart';
+
 import 'app_theme.dart';
+import 'workout_store.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  Future<void> _confirmReset(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reset demo data?'),
+        content: const Text(
+          'All your workouts will be replaced with the sample data.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await WorkoutStore.instance.resetToSampleData();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sample data restored')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +53,16 @@ class SettingsScreen extends StatelessWidget {
                       isDark ? ThemeMode.dark : ThemeMode.light;
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.restore),
+                title: const Text('Reset demo data'),
+                subtitle: const Text('Replace all workouts with sample data'),
+                onTap: () => _confirmReset(context),
+              ),
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('About'),
-                subtitle: Text('Repify v1.0 · KTU coursework'),
+                subtitle: Text('Repify v1.1 · KTU coursework'),
               ),
             ],
           );

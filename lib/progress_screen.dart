@@ -1,6 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import 'workout_stats.dart';
+import 'workout_store.dart';
+
+/// Line chart of the best weight per workout, built from the user's real data.
 class ProgressScreen extends StatefulWidget {
   const ProgressScreen({super.key});
 
@@ -9,163 +15,221 @@ class ProgressScreen extends StatefulWidget {
 }
 
 class _ProgressScreenState extends State<ProgressScreen> {
-  // Sample data: weight (kg) per week. Replaced by real API data in Iteration 2.
-  final Map<String, List<double>> data = const {
-    'Bench Press': [60, 65, 70, 72, 78, 85],
-    'Squat': [80, 85, 90, 95, 100, 110],
-    'Deadlift': [100, 105, 110, 115, 125, 130],
-    'Overhead Press': [30, 32.5, 35, 37.5, 40, 42.5],
-  };
-
-  String selected = 'Bench Press';
-
-  String formatKg(double v) =>
-      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+  String? selected;
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
-    final values = data[selected]!;
-    final minV = values.reduce((a, b) => a < b ? a : b);
-    final maxV = values.reduce((a, b) => a > b ? a : b);
-    final first = values.first;
-    final last = values.last;
-    final diff = last - first;
-    final percent = diff / first * 100;
+    return ListenableBuilder(
+      listenable: WorkoutStore.instance,
+      builder: (context, _) {
+        final workouts = WorkoutStore.instance.workouts;
+        final exercises = trackedExercises(workouts).take(8).toList();
 
-    final minY = ((minV - 5) / 10).floor() * 10.0;
-    final maxY = ((maxV + 5) / 10).ceil() * 10.0;
-    final interval = (maxY - minY) <= 60 ? 10.0 : 20.0;
-
-    final spots = [
-      for (int i = 0; i < values.length; i++) FlSpot(i.toDouble(), values[i]),
-    ];
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Exercise',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: data.keys.map((name) {
-              return ChoiceChip(
-                label: Text(name),
-                selected: selected == name,
-                onSelected: (_) => setState(() => selected = name),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            '$selected: weight over 6 weeks (kg)',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 260,
-            child: LineChart(
-              LineChartData(
-                minX: 0,
-                maxX: (values.length - 1).toDouble(),
-                minY: minY,
-                maxY: maxY,
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: interval,
-                ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      interval: interval,
-                      getTitlesWidget: (value, meta) => Text(
-                        value.toStringAsFixed(0),
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: 1,
-                      getTitlesWidget: (value, meta) => Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Wk ${value.toInt() + 1}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    color: color,
-                    barWidth: 4,
-                    dotData: const FlDotData(show: true),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: color.withAlpha(40),
-                    ),
-                  ),
-                ],
+        if (exercises.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Text(
+                'No data yet. Finish a workout to see your progress.',
+                textAlign: TextAlign.center,
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          Row(
+          );
+        }
+
+        final current = exercises.firstWhere(
+          (e) => normalizeExerciseName(e) == normalizeExerciseName(selected ?? ''),
+          orElse: () => exercises.first,
+        );
+        final points = progressFor(workouts, current);
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _SummaryCard(label: 'Start', value: '${formatKg(first)} kg')),
-              const SizedBox(width: 10),
-              Expanded(child: _SummaryCard(label: 'Now', value: '${formatKg(last)} kg')),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SummaryCard(
-                  label: 'Change',
-                  value: '+${formatKg(diff)} kg',
-                  valueColor: Colors.green,
-                ),
+              const Text(
+                'Exercise',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
               ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: exercises.map((name) {
+                  return ChoiceChip(
+                    label: Text(name),
+                    selected: name == current,
+                    onSelected: (_) => setState(() => selected = name),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '$current: best weight per workout (kg)',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              if (points.length >= 2) _buildChart(context, points),
+              if (points.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                _buildSummary(current, points),
+              ],
             ],
           ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const Icon(Icons.trending_up, color: Colors.green, size: 32),
-                  const SizedBox(width: 12),
-                  Expanded(
+        );
+      },
+    );
+  }
+
+  Widget _buildChart(BuildContext context, List<ProgressPoint> points) {
+    final color = Theme.of(context).colorScheme.primary;
+    final weights = points.map((p) => p.weight).toList();
+    final minV = weights.reduce(math.min);
+    final maxV = weights.reduce(math.max);
+
+    var minY = ((minV - 5) / 10).floor() * 10.0;
+    var maxY = ((maxV + 5) / 10).ceil() * 10.0;
+    if (minY < 0) minY = 0;
+    if (maxY - minY < 20) maxY = minY + 20;
+    final yInterval = (maxY - minY) <= 60 ? 10.0 : 20.0;
+    final labelStep = math.max(1, (points.length / 5).ceil());
+
+    final spots = [
+      for (var i = 0; i < points.length; i++) FlSpot(i.toDouble(), points[i].weight),
+    ];
+
+    return SizedBox(
+      height: 260,
+      child: LineChart(
+        LineChartData(
+          minX: 0,
+          maxX: (points.length - 1).toDouble(),
+          minY: minY,
+          maxY: maxY,
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            horizontalInterval: yInterval,
+          ),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 40,
+                interval: yInterval,
+                getTitlesWidget: (value, meta) => Text(
+                  value.toStringAsFixed(0),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 30,
+                interval: 1,
+                getTitlesWidget: (value, meta) {
+                  final i = value.round();
+                  if ((value - i).abs() > 0.01 ||
+                      i < 0 ||
+                      i >= points.length ||
+                      i % labelStep != 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      'You increased your $selected by ${formatKg(diff)} kg '
-                      '(${percent.toStringAsFixed(0)}%) over 6 weeks!',
+                      shortDate(points[i].date),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ),
-        ],
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              preventCurveOverShooting: true,
+              color: color,
+              barWidth: 4,
+              dotData: const FlDotData(show: true),
+              belowBarData: BarAreaData(show: true, color: color.withAlpha(40)),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildSummary(String exercise, List<ProgressPoint> points) {
+    final first = points.first.weight;
+    final last = points.last.weight;
+    final best = points.map((p) => p.weight).reduce(math.max);
+    final diff = last - first;
+    final changeText = diff > 0 ? '+${formatKg(diff)} kg' : '${formatKg(diff)} kg';
+    final changeColor = diff > 0 ? Colors.green : (diff < 0 ? Colors.red : null);
+
+    final String message;
+    final IconData icon;
+    final Color iconColor;
+    if (points.length < 2) {
+      message = 'Only one session so far (${formatKg(first)} kg on '
+          '${shortDate(points.first.date)}). Log $exercise again to see a trend.';
+      icon = Icons.info_outline;
+      iconColor = Colors.grey;
+    } else if (diff > 0) {
+      final percent = first > 0 ? (diff / first * 100).toStringAsFixed(0) : '0';
+      message = 'You increased your $exercise by ${formatKg(diff)} kg '
+          '($percent%) since ${shortDate(points.first.date)}!';
+      icon = Icons.trending_up;
+      iconColor = Colors.green;
+    } else if (diff == 0) {
+      message = 'Same weight as your first session. Time to add a little more?';
+      icon = Icons.trending_flat;
+      iconColor = Colors.orange;
+    } else {
+      message = 'Your last session was lighter than the first one. Keep going!';
+      icon = Icons.trending_down;
+      iconColor = Colors.red;
+    }
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _SummaryCard(label: 'Start', value: '${formatKg(first)} kg')),
+            const SizedBox(width: 10),
+            Expanded(child: _SummaryCard(label: 'Best (PR)', value: '${formatKg(best)} kg')),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _SummaryCard(
+                label: 'Change',
+                value: changeText,
+                valueColor: changeColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(icon, color: iconColor, size: 32),
+                const SizedBox(width: 12),
+                Expanded(child: Text(message)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

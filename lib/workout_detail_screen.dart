@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'workout_stats.dart';
 import 'workout_store.dart';
 
 class WorkoutDetailScreen extends StatelessWidget {
@@ -8,6 +10,9 @@ class WorkoutDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final records = personalRecords(WorkoutStore.instance.workouts);
+    final hasRecord = workout.exercises.any((e) => isPersonalRecord(records, e));
+
     return Scaffold(
       appBar: AppBar(title: Text(workout.name)),
       body: ListView(
@@ -59,9 +64,31 @@ class WorkoutDetailScreen extends StatelessWidget {
                 subtitle: Text(
                   '${ex.sets} sets × ${ex.reps} reps · ${ex.weight} kg',
                 ),
+                trailing: isPersonalRecord(records, ex)
+                    ? const Tooltip(
+                        message: 'Personal record',
+                        child: Icon(Icons.emoji_events, color: Colors.amber),
+                      )
+                    : null,
               ),
             ),
           ),
+          if (hasRecord)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Your best weight ever for this exercise',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

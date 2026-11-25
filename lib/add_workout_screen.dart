@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'workout_store.dart';
 
+/// Manual entry of a past workout (when the user did not use a live session).
 class AddWorkoutScreen extends StatefulWidget {
   final VoidCallback onSaved;
 
@@ -64,7 +66,7 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
 
   void saveWorkout() {
     final typedName = workoutNameController.text.trim();
-    WorkoutStore.instance.addWorkout(
+    final records = WorkoutStore.instance.addWorkout(
       Workout(
         name: typedName.isEmpty ? 'Workout' : typedName,
         date: DateTime.now(),
@@ -75,7 +77,14 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
       addedExercises.clear();
       workoutNameController.clear();
     });
-    showMessage('Workout saved!');
+    if (records.isEmpty) {
+      showMessage('Workout saved!');
+    } else {
+      showMessage(
+        '🏆 New personal record: ${records.join(', ')}!',
+        color: Colors.green.shade700,
+      );
+    }
     widget.onSaved();
   }
 

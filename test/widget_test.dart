@@ -1,30 +1,29 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:my_app/main.dart';
+import 'package:my_app/login_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Login shows a warning when the fields are empty', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.ensureVisible(find.text('Log In'));
+    await tester.tap(find.text('Log In'));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Please fill in both fields'), findsOneWidget);
+    expect(find.text('Recent workouts'), findsNothing);
+  });
+
+  testWidgets('Login opens Home when both fields are filled', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+
+    await tester.enterText(find.byType(TextField).at(0), 'ilkin@example.com');
+    await tester.enterText(find.byType(TextField).at(1), 'secret');
+    await tester.ensureVisible(find.text('Log In'));
+    await tester.tap(find.text('Log In'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Please fill in both fields'), findsNothing);
+    expect(find.text('Recent workouts'), findsOneWidget);
   });
 }
