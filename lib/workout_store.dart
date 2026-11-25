@@ -4,7 +4,17 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api_client.dart';
 import 'workout_stats.dart';
+
+String _jsonText(Object? value, {bool kg = false}) {
+  if (value == null) return '';
+  if (value is num) {
+    if (kg) return formatKg(value.toDouble());
+    return value == value.roundToDouble() ? value.toInt().toString() : value.toString();
+  }
+  return '$value';
+}
 
 /// One exercise inside a workout, e.g. Bench Press 3 x 10 @ 60 kg.
 class Exercise {
@@ -34,14 +44,14 @@ class Exercise {
         'name': name,
         'sets': sets,
         'reps': reps,
-        'weight': weight,
+        'weight': weight.replaceAll(',', '.'),
       };
 
   factory Exercise.fromJson(Map<String, dynamic> json) => Exercise(
-        name: '${json['name'] ?? ''}',
-        sets: '${json['sets'] ?? ''}',
-        reps: '${json['reps'] ?? ''}',
-        weight: '${json['weight'] ?? ''}',
+        name: _jsonText(json['name']),
+        sets: _jsonText(json['sets']),
+        reps: _jsonText(json['reps']),
+        weight: _jsonText(json['weight'], kg: true),
       );
 }
 
@@ -49,6 +59,7 @@ class Exercise {
 class Workout {
   static int _nextId = 0;
 
+  /// Server id (a number) once synced, otherwise a temporary local id.
   final String id;
   final String name;
   final DateTime date;
@@ -61,7 +72,10 @@ class Workout {
     required this.date,
     required this.exercises,
     this.duration = Duration.zero,
-  }) : id = id ?? '${DateTime.now().microsecondsSinceEpoch}-${_nextId++}';
+  }) : id = id ?? 'local-${DateTime.now().microsecondsSinceEpoch}-${_nextId++}';
+
+  /// True when the workout is stored on the server.
+  bool get isSynced => int.tryParse(id) != null;
 
   String get formattedDate => '${shortDate(date)}, ${date.year}';
 
@@ -87,10 +101,11 @@ class Workout {
     return '$withCommas kg';
   }
 
+  /// Same JSON format as the Django API.
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
-        'date': date.toIso8601String(),
+        'date': date.toUtc().toIso8601String(),
         'durationSeconds': duration.inSeconds,
         'exercises': exercises.map((e) => e.toJson()).toList(),
       };
@@ -98,9 +113,9 @@ class Workout {
   factory Workout.fromJson(Map<String, dynamic> json) {
     final rawExercises = json['exercises'];
     return Workout(
-      id: json['id'] as String?,
+      id: json['id'] == null ? null : '${json['id']}',
       name: (json['name'] as String?) ?? 'Workout',
-      date: DateTime.tryParse('${json['date']}') ?? DateTime.now(),
+      date: DateTime.tryParse('${json['date']}')?.toLocal() ?? DateTime.now(),
       duration: Duration(
         seconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
       ),
@@ -126,8 +141,8 @@ List<Workout> decodeWorkouts(String raw) {
       .toList();
 }
 
-/// Six weeks of example training (Push / Legs / Pull), dated relative to today
-/// so the dashboard and the progress chart look realistic in a demo.
+/// Six weeks of example training (Push / Legs / Pull), dated relative to today.
+/// Used in tests. The server has the same data via `manage.py seed_demo`.
 List<Workout> sampleWorkouts() {
   final now = DateTime.now();
   DateTime daysAgo(int days) =>
@@ -175,76 +190,153 @@ List<Workout> sampleWorkouts() {
   return workouts;
 }
 
-/// Single source of truth for workouts.
-/// Data is saved on the phone (shared_preferences), so it survives a restart.
-/// In a later iteration only this class needs to change to use a backend API.
+/// Single source of truth for workouts in the app.
+///
+/// The Django server is the main storage. A copy is kept on the phone, so the
+/// app opens instantly and still works offline: workouts saved without a
+/// connection are uploaded on the next sync.
 class WorkoutStore extends ChangeNotifier {
-  WorkoutStore._() : _workouts = sampleWorkouts();
+  WorkoutStore._();
   static final WorkoutStore instance = WorkoutStore._();
 
-  static const String _storageKey = 'workouts_v1';
+  static const String _cacheKey = 'workouts_cache_v2';
 
-  List<Workout> _workouts;
+  List<Workout> _workouts = [];
+  bool isSyncing = false;
+  String? syncError;
 
   List<Workout> get workouts => List.unmodifiable(_workouts);
 
-  /// Reads saved workouts. If nothing is saved yet, sample data stays.
-  Future<void> load() async {
+  int get unsyncedCount => _workouts.where((w) => !w.isSynced).length;
+
+  /// Shows the copy stored on the phone (instant, works offline).
+  Future<void> loadCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_storageKey);
+      final raw = prefs.getString(_cacheKey);
       if (raw != null) {
         _workouts = decodeWorkouts(raw);
         _sortNewestFirst();
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('Could not load workouts: $e');
+      debugPrint('Could not read the local copy: $e');
+    }
+  }
+
+  Future<void> onLoggedIn() async {
+    await loadCache();
+    await refresh();
+  }
+
+  /// Uploads workouts saved offline, then downloads the full list.
+  Future<bool> refresh() async {
+    if (isSyncing) return false;
+    isSyncing = true;
+    syncError = null;
+    notifyListeners();
+    try {
+      for (final pending in _workouts.where((w) => !w.isSynced).toList()) {
+        final saved = await ApiClient.instance.createWorkout(pending);
+        _replace(pending.id, saved);
+      }
+      _workouts = await ApiClient.instance.fetchWorkouts();
+      _sortNewestFirst();
+      await _saveCache();
+      return true;
+    } catch (e) {
+      syncError = '$e';
+      return false;
+    } finally {
+      isSyncing = false;
+      notifyListeners();
     }
   }
 
   /// Saves the workout and returns the exercises that set a new personal record.
+  /// It appears in the app immediately and is uploaded in the background.
   List<String> addWorkout(Workout workout) {
     final records = newPersonalRecords(_workouts, workout);
     _workouts.add(workout);
     _sortNewestFirst();
     notifyListeners();
-    unawaited(_save());
+    unawaited(_saveCache());
+    unawaited(_upload(workout));
     return records;
   }
 
   bool removeWorkout(String id) {
-    final before = _workouts.length;
-    _workouts.removeWhere((w) => w.id == id);
-    if (_workouts.length == before) return false;
+    final index = _workouts.indexWhere((w) => w.id == id);
+    if (index < 0) return false;
+    final removed = _workouts.removeAt(index);
     notifyListeners();
-    unawaited(_save());
+    unawaited(_saveCache());
+    if (removed.isSynced) unawaited(_deleteOnServer(removed.id));
     return true;
   }
 
-  /// Used by "Undo" after a delete.
+  /// Used by "Undo" after a delete: saves it again as a new workout.
   void restoreWorkout(Workout workout) {
-    if (_workouts.any((w) => w.id == workout.id)) return;
-    _workouts.add(workout);
-    _sortNewestFirst();
-    notifyListeners();
-    unawaited(_save());
+    addWorkout(Workout(
+      name: workout.name,
+      date: workout.date,
+      exercises: workout.exercises,
+      duration: workout.duration,
+    ));
   }
 
-  Future<void> resetToSampleData() async {
-    _workouts = sampleWorkouts();
+  /// Called on log out.
+  Future<void> clear() async {
+    _workouts = [];
+    syncError = null;
     notifyListeners();
-    await _save();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cacheKey);
+    } catch (_) {}
+  }
+
+  Future<void> _upload(Workout workout) async {
+    try {
+      final saved = await ApiClient.instance.createWorkout(workout);
+      _replace(workout.id, saved);
+      syncError = null;
+      notifyListeners();
+      await _saveCache();
+    } catch (_) {
+      syncError = 'Saved on the phone. It will sync when the server is reachable.';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _deleteOnServer(String id) async {
+    try {
+      await ApiClient.instance.deleteWorkout(id);
+    } catch (e) {
+      syncError = 'Could not delete on the server: $e';
+      notifyListeners();
+    }
+  }
+
+  void _replace(String oldId, Workout saved) {
+    final index = _workouts.indexWhere((w) => w.id == oldId);
+    if (index >= 0) {
+      _workouts[index] = saved;
+      _sortNewestFirst();
+    } else {
+      // Deleted on the phone while it was uploading: delete on the server too.
+      unawaited(_deleteOnServer(saved.id));
+    }
   }
 
   void _sortNewestFirst() => _workouts.sort((a, b) => b.date.compareTo(a.date));
 
-  Future<void> _save() async {
+  Future<void> _saveCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_storageKey, encodeWorkouts(_workouts));
+      await prefs.setString(_cacheKey, encodeWorkouts(_workouts));
     } catch (e) {
-      debugPrint('Could not save workouts: $e');
+      debugPrint('Could not save the local copy: $e');
     }
   }
 }
