@@ -1,12 +1,17 @@
 from rest_framework import mixins, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .ai import AiError, AiNotConfigured, coach_reply, recognize_equipment
+from .coach import CoachChatSerializer, build_coach_context
 from .models import Workout
 from .serializers import LoginSerializer, RegisterSerializer, WorkoutSerializer
+
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 def _auth_response(user, status_code=status.HTTP_200_OK):
@@ -98,3 +103,57 @@ def stats(request):
             "personalRecords": {name: weight for name, weight in records.values()},
         }
     )
+
+
+class EquipmentRecognizeView(APIView):
+    """
+    POST /api/equipment/recognize/  (multipart form, field "image")
+    Returns the equipment in the photo and exercises that can be done with it.
+    """
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        image = request.FILES.get("image")
+        if image is None:
+            return Response({"detail": "Send a photo in the 'image' field."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if image.size > MAX_IMAGE_BYTES:
+            return Response({"detail": "The photo is too large (max 8 MB)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        mime_type = image.content_type or "image/jpeg"
+        if not mime_type.startswith("image/"):
+            mime_type = "image/jpeg"
+        try:
+            result = recognize_equipment(image.read(), mime_type)
+        except AiNotConfigured as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except AiError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(result)
+
+
+class CoachChatView(APIView):
+    """
+    POST /api/coach/chat/
+    {"messages": [{"role": "user", "text": "What should I train today?"}],
+     "health": {"steps": 6400, "heartRateAvg": 72}}      <- optional
+    The server adds a summary of the user's workouts, so the AI answers
+    based on real data. Returns {"reply": "..."}.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = CoachChatSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        context = build_coach_context(request.user, data.get("health"))
+        try:
+            reply = coach_reply(data["messages"], context)
+        except AiNotConfigured as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except AiError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({"reply": reply})

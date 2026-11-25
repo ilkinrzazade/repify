@@ -43,7 +43,7 @@ Future<void> showServerUrlDialog(BuildContext context) async {
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      backgroundColor: ok ? Colors.green.shade700 : Colors.red,
+      backgroundColor: ok ? AppColors.cardHigh : AppColors.danger,
       content: Text(
         ok
             ? 'Connected to ${ApiClient.instance.baseUrl}'
@@ -61,7 +61,7 @@ class SettingsScreen extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: ok ? Colors.green.shade700 : Colors.red,
+        backgroundColor: ok ? AppColors.cardHigh : AppColors.danger,
         content: Text(
           ok ? 'Synced with the server' : WorkoutStore.instance.syncError ?? 'Sync failed',
         ),
@@ -74,29 +74,19 @@ class SettingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListenableBuilder(
-        listenable: Listenable.merge([themeModeNotifier, WorkoutStore.instance]),
+        listenable: WorkoutStore.instance,
         builder: (context, _) {
           final store = WorkoutStore.instance;
           final pending = store.unsyncedCount;
           return ListView(
             children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.dark_mode),
-                title: const Text('Dark mode'),
-                subtitle: const Text('Switch between light and dark theme'),
-                value: themeModeNotifier.value == ThemeMode.dark,
-                onChanged: (isDark) {
-                  themeModeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
-                },
-              ),
-              const Divider(),
               ListTile(
-                leading: const Icon(Icons.person_outline),
+                leading: const Icon(Icons.person_outline, color: AppColors.lime),
                 title: const Text('Account'),
                 subtitle: Text(ApiClient.instance.email ?? 'Not logged in'),
               ),
               ListTile(
-                leading: const Icon(Icons.dns_outlined),
+                leading: const Icon(Icons.dns_outlined, color: AppColors.lime),
                 title: const Text('Server address'),
                 subtitle: Text(ApiClient.instance.baseUrl),
                 onTap: () => showServerUrlDialog(context),
@@ -108,7 +98,7 @@ class SettingsScreen extends StatelessWidget {
                         height: 24,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.sync),
+                    : const Icon(Icons.sync, color: AppColors.lime),
                 title: const Text('Sync now'),
                 subtitle: Text(
                   pending > 0
@@ -119,7 +109,7 @@ class SettingsScreen extends StatelessWidget {
               ),
               const Divider(),
               const ListTile(
-                leading: Icon(Icons.info_outline),
+                leading: Icon(Icons.info_outline, color: AppColors.lime),
                 title: Text('About'),
                 subtitle: Text('Repify v2.0 · Flutter + Django REST · KTU coursework'),
               ),

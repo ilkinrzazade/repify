@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'api_client.dart';
+import 'app_theme.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'workout_store.dart';
@@ -81,69 +82,79 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF2E1652), Color(0xFF4A2574), Color(0xFF7E57C2)],
+      body: Stack(
+        children: [
+          // Neon glow in the top corner.
+          Positioned(
+            top: -120,
+            right: -100,
+            child: Container(
+              width: 320,
+              height: 320,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [AppColors.lime.withAlpha(55), Colors.transparent],
+                ),
+              ),
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Stack(
-            children: [
-              Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withAlpha(35),
-                          shape: BoxShape.circle,
+          SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 84,
+                            height: 84,
+                            decoration: limeCardDecoration(radius: 26),
+                            child: const Icon(
+                              Icons.fitness_center,
+                              size: 46,
+                              color: AppColors.onLime,
+                            ),
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.fitness_center,
-                          size: 52,
-                          color: Colors.white,
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Repify',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.text,
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Repify',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Track every rep. See your progress.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.muted, fontSize: 14),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Track every rep. See your progress.',
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                      const SizedBox(height: 32),
-                      Card(
-                        elevation: 6,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
+                        const SizedBox(height: 32),
+                        Container(
+                          padding: const EdgeInsets.all(22),
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(color: AppColors.border),
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
                                 createAccount ? 'Create account' : 'Welcome!',
                                 style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.text,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -151,24 +162,23 @@ class _LoginScreenState extends State<LoginScreen> {
                                 createAccount
                                     ? 'Your workouts are saved on the server'
                                     : 'Log in to continue',
-                                style: const TextStyle(color: Colors.grey),
+                                style: const TextStyle(color: AppColors.muted),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 22),
                               TextField(
                                 controller: emailController,
                                 keyboardType: TextInputType.emailAddress,
-                                decoration: InputDecoration(
+                                style: const TextStyle(color: AppColors.text),
+                                decoration: const InputDecoration(
                                   labelText: 'Email',
-                                  prefixIcon: const Icon(Icons.email_outlined),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
+                                  prefixIcon: Icon(Icons.alternate_email),
                                 ),
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 14),
                               TextField(
                                 controller: passwordController,
                                 obscureText: hidePassword,
+                                style: const TextStyle(color: AppColors.text),
                                 decoration: InputDecoration(
                                   labelText: 'Password',
                                   helperText: createAccount ? 'At least 6 characters' : null,
@@ -185,22 +195,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                       });
                                     },
                                   ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
                                 ),
                               ),
                               const SizedBox(height: 24),
                               ElevatedButton(
                                 onPressed: loading ? null : submit,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF4A2574),
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor: const Color(0xFF7E57C2),
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 17),
                                 ),
                                 child: loading
                                     ? const SizedBox(
@@ -208,18 +209,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                         height: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          color: Colors.white,
+                                          color: AppColors.lime,
                                         ),
                                       )
                                     : Text(
                                         createAccount ? 'Create account' : 'Log In',
                                         style: const TextStyle(
                                           fontSize: 16,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               TextButton(
                                 onPressed: loading
                                     ? null
@@ -233,23 +234,23 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              Positioned(
-                top: 4,
-                right: 4,
-                child: IconButton(
-                  icon: const Icon(Icons.dns_outlined, color: Colors.white70),
-                  tooltip: 'Server address',
-                  onPressed: () => showServerUrlDialog(context),
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: IconButton(
+                    icon: const Icon(Icons.dns_outlined, color: AppColors.muted),
+                    tooltip: 'Server address',
+                    onPressed: () => showServerUrlDialog(context),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -12,5 +12,7 @@ urlpatterns = [
     path("auth/login/", views.LoginView.as_view(), name="login"),
     path("auth/logout/", views.LogoutView.as_view(), name="logout"),
     path("stats/", views.stats, name="stats"),
+    path("equipment/recognize/", views.EquipmentRecognizeView.as_view(), name="equipment-recognize"),
+    path("coach/chat/", views.CoachChatView.as_view(), name="coach-chat"),
     path("", include(router.urls)),
 ]

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
 import 'workout_card.dart';
 import 'workout_store.dart';
 
@@ -30,18 +31,20 @@ class HistoryScreen extends StatelessWidget {
       builder: (context, _) {
         final workouts = WorkoutStore.instance.workouts;
         if (workouts.isEmpty) {
-          return const Center(child: Text('No workouts yet'));
+          return const Center(
+            child: Text('No workouts yet', style: TextStyle(color: AppColors.muted)),
+          );
         }
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
           itemCount: workouts.length + 1,
           itemBuilder: (context, index) {
             if (index == 0) {
-              return const Padding(
-                padding: EdgeInsets.only(bottom: 12),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
-                  'Swipe left on a workout to delete it.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                  '${workouts.length} workouts · swipe left to delete',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
                 ),
               );
             }
@@ -50,14 +53,14 @@ class HistoryScreen extends StatelessWidget {
               key: ValueKey(workout.id),
               direction: DismissDirection.endToStart,
               background: Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 22),
                 alignment: Alignment.centerRight,
                 decoration: BoxDecoration(
-                  color: Colors.red.shade400,
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.danger,
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Icon(Icons.delete, color: Colors.white),
+                child: const Icon(Icons.delete_outline, color: Colors.white),
               ),
               onDismissed: (_) => _onDeleted(context, workout),
               child: WorkoutCard(workout: workout),

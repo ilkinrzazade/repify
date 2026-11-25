@@ -29,7 +29,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Please fill in both fields'), findsOneWidget);
-    expect(find.text('Recent workouts'), findsNothing);
+    expect(find.text('Start new workout'), findsNothing);
   });
 
   testWidgets('Login opens Home when the server accepts the account', (tester) async {
@@ -42,7 +42,7 @@ void main() {
     await tapLogIn(tester);
     await tester.pumpAndSettle();
 
-    expect(find.text('Recent workouts'), findsOneWidget);
+    expect(find.text('Start new workout'), findsOneWidget);
   });
 
   testWidgets('Login shows the server error and stays on the login screen', (tester) async {
@@ -57,7 +57,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Wrong email or password.'), findsOneWidget);
-    expect(find.text('Recent workouts'), findsNothing);
+    expect(find.text('Start new workout'), findsNothing);
   });
 
   testWidgets('Switches to the create account form', (tester) async {

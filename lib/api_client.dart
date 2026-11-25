@@ -16,6 +16,38 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// What the AI found in an equipment photo.
+class EquipmentResult {
+  final String equipment;
+  final double confidence;
+  final List<String> muscles;
+  final List<String> exercises;
+  final String tip;
+
+  const EquipmentResult({
+    required this.equipment,
+    required this.confidence,
+    required this.muscles,
+    required this.exercises,
+    required this.tip,
+  });
+
+  bool get isUnknown =>
+      equipment.trim().isEmpty || equipment.toLowerCase() == 'unknown';
+
+  factory EquipmentResult.fromJson(Map<String, dynamic> json) {
+    List<String> list(Object? value) =>
+        value is List ? value.map((v) => '$v').toList() : <String>[];
+    return EquipmentResult(
+      equipment: '${json['equipment'] ?? 'Unknown'}',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+      muscles: list(json['muscles']),
+      exercises: list(json['exercises']),
+      tip: '${json['tip'] ?? ''}',
+    );
+  }
+}
+
 /// Talks to the Django REST backend.
 /// Keeps the server address and the login token on the phone.
 class ApiClient {
@@ -123,6 +155,61 @@ class ApiClient {
     await _send('DELETE', '/api/workouts/$id/');
   }
 
+  // ---------- AI equipment scanner ----------
+
+  /// Sends a photo to the server, which asks the AI what equipment it shows.
+  Future<EquipmentResult> recognizeEquipment(List<int> imageBytes) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/equipment/recognize/'),
+    );
+    if (token != null) request.headers['Authorization'] = 'Token $token';
+    request.headers['Accept'] = 'application/json';
+    request.files.add(
+      http.MultipartFile.fromBytes('image', imageBytes, filename: 'equipment.jpg'),
+    );
+
+    late http.Response response;
+    try {
+      final streamed = await request.send().timeout(const Duration(seconds: 60));
+      response = await http.Response.fromStream(streamed);
+    } catch (_) {
+      throw ApiException('Cannot reach the server at $baseUrl');
+    }
+    if (response.statusCode == 401) {
+      throw ApiException('Session expired. Please log in again.');
+    }
+    if (response.statusCode >= 400) {
+      throw ApiException(_errorMessage(response));
+    }
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    if (data is! Map) throw ApiException('Unexpected answer from the server.');
+    return EquipmentResult.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  // ---------- AI Coach ----------
+
+  /// Sends the chat to the server. The server adds a summary of my workouts
+  /// and asks the AI. Returns the coach's answer.
+  Future<String> coachChat(
+    List<Map<String, String>> messages, {
+    Map<String, num>? health,
+  }) async {
+    final data = await _send(
+      'POST',
+      '/api/coach/chat/',
+      body: {
+        'messages': messages,
+        if (health != null) 'health': health,
+      },
+      timeout: const Duration(seconds: 60),
+    );
+    if (data is! Map || data['reply'] == null) {
+      throw ApiException('Unexpected answer from the server.');
+    }
+    return '${data['reply']}';
+  }
+
   /// True when the server answers.
   Future<bool> ping() async {
     try {
@@ -141,20 +228,26 @@ class ApiClient {
         if (token != null) 'Authorization': 'Token $token',
       };
 
-  Future<dynamic> _send(String method, String path, {Object? body}) async {
+  Future<dynamic> _send(
+    String method,
+    String path, {
+    Object? body,
+    Duration? timeout,
+  }) async {
+    final limit = timeout ?? _timeout;
     final uri = Uri.parse('$baseUrl$path');
     final encoded = body == null ? null : jsonEncode(body);
     late http.Response response;
     try {
       switch (method) {
         case 'GET':
-          response = await http.get(uri, headers: _headers).timeout(_timeout);
+          response = await http.get(uri, headers: _headers).timeout(limit);
         case 'POST':
           response = await http
               .post(uri, headers: _headers, body: encoded)
-              .timeout(_timeout);
+              .timeout(limit);
         case 'DELETE':
-          response = await http.delete(uri, headers: _headers).timeout(_timeout);
+          response = await http.delete(uri, headers: _headers).timeout(limit);
         default:
           throw ApiException('Unsupported method $method');
       }
